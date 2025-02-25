@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>王老菊未来科技公司 - 智能侦察兵</title>
+    <style>
+        body {
+            background-color: #1b2838;
+            color: #c6d4df;
+            font-family: "Motiva Sans", Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: linear-gradient(90deg, #171a21 0%, #1b2838 100%);
+            padding: 20px;
+            margin: -20px -20px 20px -20px;
+            border-bottom: 1px solid #2d3949;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 24px;
+            font-weight: normal;
+        }
+
+        .refresh-info {
+            float: right;
+            color: #8f98a0;
+            font-size: 12px;
+        }
+        
+        .games-section {
+            margin-bottom: 30px;
+        }
+        
+        .section-title {
+            color: #fff;
+            font-size: 18px;
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            background: linear-gradient(90deg, #17202f 0%, #1b2838 100%);
+            border-radius: 3px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .section-title .count {
+            color: #66c0f4;
+            font-size: 14px;
+            background-color: rgba(102, 192, 244, 0.1);
+            padding: 2px 8px;
+            border-radius: 3px;
+        }
+        
+        .game-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 15px;
+        }
+        
+        .game-card {
+            background: linear-gradient(135deg, #1b2838 0%, #17202f 100%);
+            border-radius: 3px;
+            padding: 15px;
+            transition: all 0.2s ease;
+            border: 1px solid #2d3949;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .game-card.active {
+            background: linear-gradient(135deg, #1e3242 0%, #17202f 100%);
+            border-left: 4px solid #66c0f4;
+        }
+        
+        .game-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            border-color: #66c0f4;
+        }
+        
+        .game-name {
+            font-size: 16px;
+            color: #ffffff;
+            margin-bottom: 12px;
+            font-weight: 500;
+        }
+        
+        .game-stats {
+            font-size: 13px;
+            color: #8f98a0;
+        }
+        
+        .stat-item {
+            margin: 8px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .stat-value {
+            color: #66c0f4;
+            font-weight: 500;
+        }
+        
+        .today-active {
+            color: #a4d007 !important;
+            font-weight: bold;
+        }
+        
+        .last-played {
+            font-size: 11px;
+            color: #556772;
+            margin-top: 12px;
+            padding-top: 8px;
+            border-top: 1px solid #2d3949;
+        }
+        
+        .last-played-date {
+            margin-bottom: 4px;
+        }
+        
+        .last-record-time {
+            font-size: 10px;
+            color: #445566;
+        }
+        
+        .stat-value-muted {
+            color: #445566;
+            font-size: 10px;
+        }
+        
+        .no-games {
+            color: #8f98a0;
+            text-align: center;
+            padding: 30px;
+            background: linear-gradient(135deg, #1b2838 0%, #17202f 100%);
+            border-radius: 3px;
+            border: 1px dashed #2d3949;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: #66c0f4;
+            font-size: 16px;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .updating {
+            animation: pulse 1s infinite;
+        }
+
+        /* 添加logo样式 */
+        .company-logo {
+            color: #66c0f4;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+        
+        .header-content {
+            flex-grow: 1;
+        }
+        
+        .header-title {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .subtitle {
+            color: #8f98a0;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        
+        .footer {
+            position: fixed;
+            right: 10px;
+            bottom: 10px;
+            font-size: 11px;
+            color: #445566;
+            background: linear-gradient(135deg, #1b2838 0%, #17202f 100%);
+            padding: 5px 10px;
+            border-radius: 3px;
+            border: 1px solid #2d3949;
+            opacity: 0.8;
+            transition: opacity 0.2s;
+        }
+        
+        .footer:hover {
+            opacity: 1;
+        }
+        
+        .footer a {
+            color: #66c0f4;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        
+        .footer a:hover {
+            color: #ffffff;
+        }
+        
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .github-link {
+            display: flex;
+            align-items: center;
+            color: #66c0f4;
+            text-decoration: none;
+            font-size: 13px;
+            padding: 6px 12px;
+            border-radius: 3px;
+            background: linear-gradient(to bottom, #274155 5%, #1b2838 95%);
+            border: 1px solid #2d3949;
+            transition: all 0.2s ease;
+        }
+        
+        .github-link:hover {
+            color: #ffffff;
+            background: linear-gradient(to bottom, #315d7e 5%, #1b2838 95%);
+            border-color: #66c0f4;
+        }
+        
+        .github-icon {
+            width: 16px;
+            height: 16px;
+            margin-right: 6px;
+            filter: invert(67%) sepia(11%) saturate(2838%) hue-rotate(165deg) brightness(101%) contrast(98%);
+        }
+        
+        .github-link:hover .github-icon {
+            filter: invert(100%) sepia(0%) saturate(0%) hue-rotate(93deg) brightness(103%) contrast(103%);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-title">
+                <div class="company-logo">王老菊未来科技公司</div>
+                <h1>智能侦察兵 v1.0</h1>
+                <div class="subtitle">Steam游戏时间监控系统</div>
+            </div>
+            <div class="header-right">
+                <a href="https://github.com/molefool/steam-data-statistics" target="_blank" class="github-link">
+                    <svg class="github-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                    </svg>
+                    GitHub
+                </a>
+            </div>
+        </div>
+        
+        <div class="games-section" id="todayGames">
+            <div class="section-title">
+                今日侦察报告
+                <span class="count" id="todayCount">扫描中...</span>
+            </div>
+            <div class="game-list" id="todayGameList">
+                <div class="loading">正在进行游戏数据扫描...</div>
+            </div>
+        </div>
+        
+        <div class="games-section" id="otherGames">
+            <div class="section-title">
+                历史侦察记录
+                <span class="count" id="otherCount">扫描中...</span>
+            </div>
+            <div class="game-list" id="otherGameList"></div>
+        </div>
+    </div>
+
+    <div class="footer">
+        Created by <a href="https://space.bilibili.com/286939355" target="_blank">B站 猫猫头97</a>
+    </div>
+
+    <script>
+        async function loadGames() {
+            try {
+                const response = await fetch('/api/games');
+                const games = await response.json();
+                
+                const todayGames = games.filter(game => game.priority === 1);
+                const otherGames = games.filter(game => game.priority === 2);
+                
+                // 更新今日游戏区域
+                const todayGameList = document.getElementById('todayGameList');
+                document.getElementById('todayCount').textContent = 
+                    todayGames.length ? `${todayGames.length} 个游戏` : '暂无游戏';
+                
+                todayGameList.innerHTML = todayGames.length ? 
+                    '' : '<div class="no-games">今日暂未侦察到游戏活动</div>';
+                
+                todayGames.forEach(game => {
+                    todayGameList.appendChild(createGameCard(game));
+                });
+                
+                // 更新其他游戏区域
+                const otherGameList = document.getElementById('otherGameList');
+                document.getElementById('otherCount').textContent = 
+                    otherGames.length ? `${otherGames.length} 个游戏` : '暂无游戏';
+                
+                otherGameList.innerHTML = otherGames.length ? 
+                    '' : '<div class="no-games">暂无历史侦察记录</div>';
+                
+                otherGames.forEach(game => {
+                    otherGameList.appendChild(createGameCard(game));
+                });
+            } catch (error) {
+                console.error('数据侦察失败:', error);
+                document.getElementById('todayGameList').innerHTML = 
+                    '<div class="no-games">侦察系统故障，请稍后重试</div>';
+                document.getElementById('otherGameList').innerHTML = '';
+            }
+        }
+        
+        function createGameCard(game) {
+            const gameCard = document.createElement('div');
+            gameCard.className = 'game-card';
+            if (game.priority === 1) {
+                gameCard.classList.add('active');
+            }
+            
+            const lastRecord = new Date(game.last_record).toLocaleString('zh-CN');
+            const lastPlayed = game.last_played ? new Date(game.last_played).toLocaleDateString('zh-CN') : '从未运行';
+            
+            // 根据优先级决定显示今日游戏时间还是本周游戏时间
+            const timeDisplay = game.priority === 1 ? 
+                `<div class="stat-item">
+                    <span>今日游玩时长</span>
+                    <span class="stat-value today-active">
+                        ${game.today_hours} 小时
+                    </span>
+                </div>` :
+                `<div class="stat-item">
+                    <span>本周游玩时长</span>
+                    <span class="stat-value">
+                        ${game.weekly_hours} 小时
+                    </span>
+                </div>`;
+            
+            gameCard.innerHTML = `
+                <div class="game-name">${game.name}</div>
+                <div class="game-stats">
+                    <div class="stat-item">
+                        <span>累计游玩时长</span>
+                        <span class="stat-value">${game.total_hours} 小时</span>
+                    </div>
+                    ${timeDisplay}
+                    <div class="last-played">
+                        <div class="last-played-date">最后运行: <span class="stat-value">${lastPlayed}</span></div>
+                        <div class="last-record-time">侦察时间: <span class="stat-value-muted">${lastRecord}</span></div>
+                    </div>
+                </div>
+            `;
+            
+            return gameCard;
+        }
+
+        // 页面加载完成后获取数据
+        document.addEventListener('DOMContentLoaded', loadGames);
+        
+        // 每20分钟刷新一次页面
+        setInterval(() => window.location.reload(), 1200000);  // 1200000毫秒 = 20分钟
+    </script>
+</body>
+</html> 
