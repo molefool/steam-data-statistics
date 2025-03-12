@@ -298,13 +298,36 @@
     </div>
 
     <script>
-        async function loadGames() {
+        async function loadGames(retryCount = 0) {
             try {
-                const response = await fetch('/api/games');
+                console.log(`尝试加载游戏数据... (重试次数: ${retryCount})`);
+                const timestamp = new Date().getTime();
+                const response = await fetch(`/api/games?_t=${timestamp}`);
+                console.log("收到服务器响应:", response.status, response.statusText);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const contentType = response.headers.get("content-type");
+                if (!contentType || !contentType.includes("application/json")) {
+                    throw new Error("返回的不是JSON数据!");
+                }
+                
                 const games = await response.json();
+                console.log("解析到游戏数据:", games);
+                
+                if (!Array.isArray(games)) {
+                    if (games.error) {
+                        throw new Error(games.error);
+                    }
+                    throw new Error("返回的数据格式不正确");
+                }
                 
                 const todayGames = games.filter(game => game.priority === 1);
                 const otherGames = games.filter(game => game.priority === 2);
+                
+                console.log(`今日游戏: ${todayGames.length}, 历史游戏: ${otherGames.length}`);
                 
                 // 更新今日游戏区域
                 const todayGameList = document.getElementById('todayGameList');
@@ -329,11 +352,21 @@
                 otherGames.forEach(game => {
                     otherGameList.appendChild(createGameCard(game));
                 });
+                
+                console.log("数据加载完成");
             } catch (error) {
                 console.error('数据侦察失败:', error);
                 document.getElementById('todayGameList').innerHTML = 
-                    '<div class="no-games">侦察系统故障，请稍后重试</div>';
+                    `<div class="no-games">侦察系统故障: ${error.message}</div>`;
                 document.getElementById('otherGameList').innerHTML = '';
+                
+                // 最多重试5次，每次间隔5秒
+                if (retryCount < 5) {
+                    console.log(`${5 - retryCount}次重试机会剩余，5秒后重试...`);
+                    setTimeout(() => loadGames(retryCount + 1), 5000);
+                } else {
+                    console.error('达到最大重试次数，请刷新页面重试');
+                }
             }
         }
         
@@ -383,8 +416,8 @@
         // 页面加载完成后获取数据
         document.addEventListener('DOMContentLoaded', loadGames);
         
-        // 每20分钟刷新一次页面
-        setInterval(() => window.location.reload(), 1200000);  // 1200000毫秒 = 20分钟
+        // 每分钟刷新一次数据
+        setInterval(loadGames, 60000);
     </script>
 </body>
 </html> 

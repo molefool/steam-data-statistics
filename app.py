@@ -1,4 +1,4 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, jsonify
 from api import api
 import threading
 import time
@@ -20,13 +20,31 @@ logging.basicConfig(
 
 app = Flask(__name__)
 
-# 注册Blueprint
-app.register_blueprint(api)
+# 注册Blueprint，添加URL前缀
+app.register_blueprint(api, url_prefix='')  # 移除URL前缀
 
 @app.route('/')
 def index():
     """渲染主页"""
     return render_template('index.html')
+
+@app.errorhandler(404)
+def not_found_error(error):
+    """处理404错误"""
+    logging.error(f"404错误: {error}")
+    return jsonify({'error': 'Not Found'}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    """处理500错误"""
+    logging.error(f"500错误: {error}")
+    return jsonify({'error': 'Internal Server Error'}), 500
+
+@app.errorhandler(Exception)
+def handle_error(error):
+    """处理其他错误"""
+    logging.error(f"应用错误: {str(error)}")
+    return jsonify({'error': str(error)}), 500
 
 def run_data_collection():
     """运行数据收集脚本的函数"""
@@ -65,7 +83,7 @@ def run_data_collection():
                             logging.error(f"数据收集失败: {stderr}")
                         else:
                             logging.warning(f"第{attempt}次尝试失败，等待重试...")
-                            time.sleep(5)  # 等待5秒后重试
+                            time.sleep(5)
                             
                 except Exception as e:
                     attempt += 1
@@ -85,11 +103,18 @@ def start_data_collection_thread():
     logging.info("数据收集线程已启动")
 
 if __name__ == '__main__':
-    # 设置工作目录
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    logging.info("应用正在启动...")
+    logging.info(f"Python版本: {sys.version}")
+    logging.info(f"工作目录: {os.getcwd()}")
     
-    # 启动数据收集线程
-    start_data_collection_thread()
-    
-    # 启动Flask应用
-    app.run(host='0.0.0.0', port=5000, debug=False) 
+    try:
+        # 设置工作目录
+        os.chdir(os.path.dirname(os.path.abspath(__file__)))
+        
+        # 启动数据收集线程
+        start_data_collection_thread()
+        
+        # 启动Flask应用
+        app.run(host='0.0.0.0', port=5000, debug=False)
+    except Exception as e:
+        logging.error(f"启动失败: {str(e)}") 

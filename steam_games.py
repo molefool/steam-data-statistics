@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import sys
 import os
+import json
 
 # 强制使用UTF-8编码
 if sys.platform.startswith('win'):
@@ -81,7 +82,7 @@ def get_owned_games():
         return None
 
 def update_database(games_data):
-    """更新数据库中的游戏数据"""
+    """更新数据库中的游戏数据并生成缓存文件"""
     conn = None
     try:
         conn = get_db_connection()
@@ -89,22 +90,26 @@ def update_database(games_data):
         current_time = datetime.now()
         current_date = current_time.date()
         
+        print(f"开始更新数据，当前时间: {current_time}")
+        
+        # 用于存储当前状态的游戏数据
+        current_games = []
+        
         for game in games_data['games']:
-            # 提取游戏数据
             app_id = game['appid']
             name = game.get('name', 'Unknown')
             total_playtime = game.get('playtime_forever', 0)
             playtime_2weeks = game.get('playtime_2weeks', 0)
             
-            # 更新游戏基础信息表
+            # 更新游戏基础信息
             cursor.execute('''
             INSERT OR REPLACE INTO games (app_id, name)
             VALUES (?, ?)
             ''', (app_id, name))
             
-            # 获取今天的第一条记录，用于计算当天游戏时间
+            # 获取今天的第一条记录
             cursor.execute('''
-            SELECT playtime_total 
+            SELECT playtime_total, record_time 
             FROM playtime_records 
             WHERE app_id = ? AND record_date = ?
             ORDER BY record_time ASC
@@ -112,13 +117,12 @@ def update_database(games_data):
             ''', (app_id, current_date))
             
             first_record = cursor.fetchone()
-            # 如果有今天的首次记录，使用它来计算当天游戏时间
-            start_playtime = first_record[0] if first_record else total_playtime
             
-            # 计算当天游戏时间（当前总时间 - 今天开始时的时间）
+            # 计算当天游戏时间
+            start_playtime = first_record[0] if first_record else total_playtime
             playtime_today = total_playtime - start_playtime if first_record else 0
             
-            # 插入新的时间记录
+            # 插入新记录
             cursor.execute('''
             INSERT INTO playtime_records 
             (app_id, record_date, record_time, playtime_total, playtime_today, playtime_2weeks)
@@ -131,9 +135,83 @@ def update_database(games_data):
                 playtime_today,
                 playtime_2weeks
             ))
+            
+            # 获取最近7天的游戏时间统计和最后游玩日期
+            cursor.execute('''
+            WITH daily_stats AS (
+                -- 获取每天的游戏时间变化
+                SELECT 
+                    record_date,
+                    MAX(playtime_total) - MIN(playtime_total) as daily_playtime
+                FROM playtime_records
+                WHERE app_id = ?
+                AND record_date >= date(?, '-7 days')
+                GROUP BY record_date
+                HAVING daily_playtime > 0
+            )
+            SELECT 
+                SUM(daily_playtime) as weekly_total,
+                MAX(record_date) as last_played
+            FROM daily_stats
+            ''', (app_id, current_date))
+            
+            weekly_stats = cursor.fetchone()
+            weekly_playtime = weekly_stats[0] or 0
+            recent_last_played = weekly_stats[1]
+            
+            # 如果7天内没有记录，查找历史上最后一次游玩记录
+            if not recent_last_played:
+                cursor.execute('''
+                WITH daily_stats AS (
+                    -- 获取每天的游戏时间变化
+                    SELECT 
+                        record_date,
+                        MAX(playtime_total) - MIN(playtime_total) as daily_playtime
+                    FROM playtime_records
+                    WHERE app_id = ?
+                    GROUP BY record_date
+                    HAVING daily_playtime > 0
+                )
+                SELECT record_date
+                FROM daily_stats
+                ORDER BY record_date DESC
+                LIMIT 1
+                ''', (app_id,))
+                
+                last_played_result = cursor.fetchone()
+                historical_last_played = last_played_result[0] if last_played_result else None
+            else:
+                historical_last_played = recent_last_played
+            
+            # 如果今天有游玩或最近7天有游玩，添加到当前状态
+            if playtime_today > 0 or weekly_playtime > 0:
+                current_games.append({
+                    'app_id': app_id,
+                    'name': name,
+                    'total_hours': round(total_playtime / 60, 1),
+                    'today_hours': round(playtime_today / 60, 1),
+                    'weekly_hours': round(weekly_playtime / 60, 1),
+                    'last_played': (current_date.isoformat() if playtime_today > 0 
+                                  else historical_last_played),
+                    'last_record': current_time.isoformat(),
+                    'priority': 1 if playtime_today > 0 else 2
+                })
         
         conn.commit()
+        
+        # 将当前状态写入缓存文件
+        cache_file = 'game_status.json'
+        with open(cache_file, 'w', encoding='utf-8') as f:
+            json.dump({
+                'timestamp': current_time.isoformat(),
+                'games': sorted(current_games, 
+                              key=lambda x: (x['priority'], -x['today_hours'], -x['weekly_hours']))
+            }, f, ensure_ascii=False, indent=2)
+        
+        print(f"数据更新完成，已缓存 {len(current_games)} 个游戏状态")
+        
     except Exception as e:
+        print(f"更新数据库时出错: {e}")
         if conn:
             conn.rollback()
         raise e
@@ -143,11 +221,12 @@ def update_database(games_data):
 
 def clean_old_records():
     """清理旧的游戏记录数据"""
-    conn = sqlite3.connect('steam_games.db')
-    cursor = conn.cursor()
-    
+    conn = None
     try:
-        # 保留每个游戏最近7天的记录和每天的第一条和最后一条记录
+        conn = sqlite3.connect('steam_games.db')
+        cursor = conn.cursor()
+        
+        # 先删除旧记录
         cursor.execute('''
         DELETE FROM playtime_records 
         WHERE id NOT IN (
@@ -173,18 +252,26 @@ def clean_old_records():
         
         # 获取删除的记录数
         deleted_count = cursor.rowcount
-        
-        # 优化数据库
-        cursor.execute('VACUUM')
-        
         conn.commit()
+        
+        # 关闭连接后执行VACUUM
+        conn.close()
+        conn = None
+        
+        # 重新打开连接执行VACUUM
+        vacuum_conn = sqlite3.connect('steam_games.db')
+        vacuum_conn.execute('VACUUM')
+        vacuum_conn.close()
+        
         print(f"已清理 {deleted_count} 条历史记录")
         
     except Exception as e:
         print(f"清理数据时出错: {e}")
-        conn.rollback()
+        if conn:
+            conn.rollback()
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 def main():
     # 获取游戏数据

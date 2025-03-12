@@ -1,11 +1,22 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, make_response
 import sqlite3
 import time
 from datetime import datetime
 import pytz  # 添加时区支持
+import logging
+import os
+import json
 
 # 创建Blueprint而不是Flask应用
 api = Blueprint('api', __name__)
+
+@api.after_request
+def add_header(response):
+    """添加响应头以禁用缓存"""
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 def get_db_connection():
     """获取数据库连接，带重试机制"""
@@ -41,64 +52,51 @@ def get_beijing_time(utc_time_str):
 
 @api.route('/api/games', methods=['GET'])
 def get_games():
-    """获取所有游戏的基本信息，优先显示最近有变化的游戏"""
+    """获取所有游戏的基本信息"""
+    try:
+        cache_file = 'game_status.json'
+        if not os.path.exists(cache_file):
+            return jsonify({'error': '数据正在准备中'}), 503
+            
+        # 读取缓存文件
+        with open(cache_file, 'r', encoding='utf-8') as f:
+            cache_data = json.load(f)
+            
+        # 检查数据是否过期（超过5分钟）
+        cache_time = datetime.fromisoformat(cache_data['timestamp'])
+        now = datetime.now()
+        if (now - cache_time).total_seconds() > 300:  # 5分钟
+            logging.warning("缓存数据已过期")
+            
+        return jsonify(cache_data['games'])
+        
+    except Exception as e:
+        error_msg = f"获取游戏数据时出错: {str(e)}"
+        logging.error(error_msg)
+        logging.exception(e)
+        return jsonify({'error': error_msg}), 500
+
+@api.route('/api/health', methods=['GET'])
+def health_check():
+    """健康检查端点"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
-        # 优化查询，减少子查询
-        cursor.execute('''
-        WITH game_stats AS (
-            SELECT 
-                app_id,
-                SUM(CASE WHEN record_date >= date('now', '-7 days') 
-                    THEN daily_playtime ELSE 0 END) as weekly_playtime,
-                MAX(CASE WHEN daily_playtime > 0 
-                    THEN record_date ELSE NULL END) as last_played_date
-            FROM daily_stats
-            GROUP BY app_id
-        )
-        SELECT 
-            g.app_id,
-            g.name,
-            ds.total_playtime,
-            ds.daily_playtime,
-            ds.last_record_time,
-            ds.record_date,
-            gs.last_played_date,
-            gs.weekly_playtime,
-            CASE 
-                WHEN ds.daily_playtime > 0 THEN 1
-                ELSE 2
-            END as priority
-        FROM games g
-        LEFT JOIN daily_stats ds ON g.app_id = ds.app_id
-        LEFT JOIN game_stats gs ON g.app_id = gs.app_id
-        WHERE ds.record_date >= date('now', '-7 days')
-        ORDER BY 
-            priority ASC,
-            ds.daily_playtime DESC,
-            ds.total_playtime DESC
-        ''')
-        
-        games = cursor.fetchall()
+        cursor.execute('SELECT COUNT(*) FROM games')
+        count = cursor.fetchone()[0]
         conn.close()
-        
-        return jsonify([{
-            'app_id': game['app_id'],
-            'name': game['name'],
-            'total_hours': round(game['total_playtime'] / 60, 1) if game['total_playtime'] else 0,
-            'today_hours': round(game['daily_playtime'] / 60, 1) if game['daily_playtime'] else 0,
-            'weekly_hours': round(game['weekly_playtime'] / 60, 1) if game['weekly_playtime'] else 0,
-            'last_played': game['last_played_date'],
-            'last_record': get_beijing_time(game['last_record_time']).strftime('%Y/%m/%d %H:%M:%S'),
-            'priority': game['priority']
-        } for game in games])
-        
+        return jsonify({
+            'status': 'ok',
+            'database': 'connected',
+            'games_count': count,
+            'timestamp': datetime.now(pytz.timezone('Asia/Shanghai')).isoformat()
+        })
     except Exception as e:
-        if conn:
-            conn.close()
-        return jsonify({'error': str(e)}), 500
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'timestamp': datetime.now(pytz.timezone('Asia/Shanghai')).isoformat()
+        }), 500
 
 if __name__ == '__main__':
     app.run(debug=True) 
